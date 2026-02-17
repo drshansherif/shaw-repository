@@ -12,8 +12,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { NotificationSystem } from './components/NotificationSystem';
 import { ProfileSettings } from './components/ProfileSettings';
 import { analyzeFIR, findFIRByCrimeNumber } from './services/geminiService';
-import { NDPS_ACT_1985 } from './constants/ndps_act';
-import { FAMILY_COURTS_ACT_1984 } from './constants/family_court_act';
+import { STATUTES_VAULT } from './constants/statutes_vault';
 import { AnalysisResult, FileData, Suspect, CreditState, Transaction, AdminConfig, UserProfile, GroundingLink } from './types';
 
 const ANALYSIS_COST = 1500;
@@ -46,7 +45,7 @@ function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [referenceLibrary, setReferenceLibrary] = useState<'none' | 'ndps' | 'family_court'>('none');
+  const [selectedVaultIds, setSelectedVaultIds] = useState<string[]>([]);
 
   const [credits, setCredits] = useState<CreditState>(() => {
     const saved = localStorage.getItem('lex_credits');
@@ -138,10 +137,17 @@ function App() {
   const selectedSuspect = suspects.find(s => s.id === selectedSuspectId);
 
   const getLawBookContext = () => {
-    if (lawBookFile) return lawBookFile;
-    if (referenceLibrary === 'ndps') return NDPS_ACT_1985;
-    if (referenceLibrary === 'family_court') return FAMILY_COURTS_ACT_1984;
-    return null;
+    let context = "";
+    if (lawBookFile) context += `\nMANUAL UPLOAD: ${lawBookFile.name}\nCONTENT: ${lawBookFile.base64}`;
+    
+    selectedVaultIds.forEach(id => {
+      const item = STATUTES_VAULT.find(v => v.id === id);
+      if (item) {
+        context += `\nVAULT ITEM (${item.category}): ${item.name}\nCONTENT: ${item.content}`;
+      }
+    });
+    
+    return context || null;
   };
 
   const handleLookup = async () => {
@@ -197,6 +203,12 @@ function App() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const toggleVaultItem = (id: string) => {
+    setSelectedVaultIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
   if (view === 'public-login') {
@@ -349,17 +361,42 @@ function App() {
                 </div>
               )}
 
-              <div className="space-y-3 pt-2">
+              <div className="space-y-4 pt-2">
                 <div className="flex items-center space-x-2 mb-1">
-                   <i className="fas fa-book-bookmark text-[10px] text-[#00ff41]/60"></i>
-                   <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Reference Law Library</h4>
+                   <i className="fas fa-vault text-[10px] text-[#00ff41]/60"></i>
+                   <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Statute & Precedent Vault</h4>
                 </div>
-                <select className="w-full bg-black/50 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300 outline-none focus:ring-1 focus:ring-[#00ff41] transition-all appearance-none cursor-pointer" value={referenceLibrary} onChange={(e) => setReferenceLibrary(e.target.value as any)}>
-                  <option value="none">Manual Upload Only</option>
-                  <option value="ndps">NDPS Act, 1985 (Preset)</option>
-                  <option value="family_court">Family Courts Act, 1984 (Preset)</option>
-                </select>
-                <FileUpload onFileSelect={setLawBookFile} label="Defense Precedents (PDF)" icon="fa-gavel" currentFile={lawBookFile} />
+                
+                <div className="bg-black/40 border border-[#00ff41]/10 rounded-2xl p-4 max-h-48 overflow-y-auto custom-scrollbar space-y-2">
+                  {STATUTES_VAULT.map(item => (
+                    <div 
+                      key={item.id}
+                      onClick={() => toggleVaultItem(item.id)}
+                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                        selectedVaultIds.includes(item.id) 
+                        ? 'bg-[#00ff41]/10 border-[#00ff41]/40 text-[#00ff41]' 
+                        : 'bg-black border-white/5 text-slate-500 hover:border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <i className={`fas ${item.category === 'Statute' ? 'fa-book' : 'fa-gavel'} text-xs`}></i>
+                        <span className="text-[10px] font-bold uppercase tracking-tighter">{item.name}</span>
+                      </div>
+                      {selectedVaultIds.includes(item.id) && <i className="fas fa-check-circle text-[10px]"></i>}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div className="w-full border-t border-white/5"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[8px] uppercase font-black text-slate-600">
+                    <span className="bg-black px-2">OR MANUAL PDF</span>
+                  </div>
+                </div>
+
+                <FileUpload onFileSelect={setLawBookFile} label="Upload Custom Precedent" icon="fa-gavel" currentFile={lawBookFile} />
               </div>
               <button onClick={handleAnalysis} disabled={isAnalyzing || (inputMode === 'upload' ? !firFile : !lookupResult) || !selectedSuspect} className={`w-full mt-6 py-5 rounded-2xl font-black text-black transition-all shadow-xl flex flex-col items-center justify-center space-y-1 group relative overflow-hidden ${isAnalyzing || (inputMode === 'upload' ? !firFile : !lookupResult) || !selectedSuspect ? 'bg-slate-800 text-slate-600 cursor-not-allowed opacity-60' : 'bg-[#00ff41] hover:shadow-[0_0_25px_rgba(0,255,65,0.4)] active:scale-95'}`}>
                 {isAnalyzing ? <span className="flex items-center uppercase tracking-widest text-xs"><i className="fas fa-microchip fa-spin mr-3"></i> Syncing Kernel...</span> : <>

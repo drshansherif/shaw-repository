@@ -12,6 +12,13 @@ export interface Suspect {
   addedAt: number;
 }
 
+export interface PredefinedLaw {
+  id: string;
+  name: string;
+  category: 'Act' | 'Precedent' | 'Statute';
+  content: string; // The text content or a reference to it
+}
+
 export interface Loophole {
   title: string;
   section: string;
